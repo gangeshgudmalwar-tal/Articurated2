@@ -45,15 +45,13 @@ def test_invalid_then_valid_transitions_and_invoice_enqueued(client, monkeypatch
 
     # Inject a dummy invoice_tasks module to avoid importing celery in tests
     import sys, types
+
     called = []
-
     mod = types.ModuleType("app.tasks.invoice_tasks")
-
     class DummyGen:
         @staticmethod
         def delay(arg):
             called.append(arg)
-
     mod.generate_invoice = DummyGen()
     sys.modules["app.tasks.invoice_tasks"] = mod
 
@@ -62,7 +60,7 @@ def test_invalid_then_valid_transitions_and_invoice_enqueued(client, monkeypatch
     assert resp.json()["status"] == "SHIPPED"
 
     # ensure invoice task was enqueued (delay called)
-    assert called == [order_id]
+    assert called == [str(order_id)]
 
     # audit trail contains SHIPPED
     resp = client.get(f"/api/v1/orders/{order_id}/audit")

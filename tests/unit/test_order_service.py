@@ -54,7 +54,7 @@ def test_order_state_transition(order_service, db_session, current, new, should_
         result = order_service.transition_state(
             order_id=order.id,
             new_state=new,
-            actor_id="user-1",
+            actor="user-1",
             trigger="API_CALL",
             metadata={},
             ip_address="127.0.0.1"
@@ -66,7 +66,7 @@ def test_order_state_transition(order_service, db_session, current, new, should_
             order_service.transition_state(
                 order_id=order.id,
                 new_state=new,
-                actor_id="user-1",
+                actor="user-1",
                 trigger="API_CALL",
                 metadata={},
                 ip_address="127.0.0.1"
@@ -79,17 +79,31 @@ def test_invoice_trigger_on_shipped(order_service, db_session):
     db_session.commit()
     order_service.audit_service.record_state_change = MagicMock()
     # Patch Celery task using unittest.mock.patch
+    import sys, types
     from unittest.mock import patch
+    # Inject dummy invoice_tasks module if not present
     try:
-        with patch("app.tasks.invoice_tasks.generate_invoice") as mock_generate_invoice:
-            order_service.transition_state(
-                order_id=order.id,
-                new_state=OrderStatus.SHIPPED,
-                actor_id="user-1",
-                trigger="API_CALL",
-                metadata={},
-                ip_address="127.0.0.1"
-            )
-            mock_generate_invoice.delay.assert_called_once_with(str(order.id))
-    except ModuleNotFoundError:
-        pytest.skip("Celery not installed; skipping invoice trigger test.")
+        import app.tasks.invoice_tasks
+        import app.tasks
+        sys.modules["app.tasks"].invoice_tasks = sys.modules["app.tasks.invoice_tasks"]
+    except ImportError:
+        # fallback for test envs without celery
+        mod = types.ModuleType("app.tasks.invoice_tasks")
+        class DummyGen:
+            @staticmethod
+            def delay(order_id):
+                return None
+        mod.generate_invoice = DummyGen()
+        sys.modules["app.tasks.invoice_tasks"] = mod
+        import app.tasks
+        sys.modules["app.tasks"].invoice_tasks = mod
+    with patch("app.tasks.invoice_tasks.generate_invoice") as mock_generate_invoice:
+        order_service.transition_state(
+            order_id=order.id,
+            new_state=OrderStatus.SHIPPED,
+            actor="user-1",
+            trigger="API_CALL",
+            metadata={},
+            ip_address="127.0.0.1"
+        )
+        mock_generate_invoice.delay.assert_called_once_with(str(order.id))

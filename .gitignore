@@ -1,0 +1,106 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Storage
+storage/
+!storage/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Docker
+.dockerignore
+
+# Documentation
+site/
+
+# OS
+Thumbs.db
+.github/archive/AGENT_MODEL_VALIDATION.md
+.github/archive/agent-orchestration.yml
+.github/archive/agents.md
+.github/archive/analysis.yml
+.github/archive/ARCHITECTURE_DIAGRAM.md
+.github/archive/deployment.yml
+.github/archive/IMPLEMENTATION_GUIDE.md
+.github/archive/implementation.yml
+.github/archive/MCP_ASSIGNMENT_MATRIX.md
+.github/archive/MONITORING.md
+.github/archive/OPTIMIZATION_SUMMARY_V3.md
+.github/archive/orchestrator.yml
+.github/archive/QUICK_START.md
+.github/archive/README.md
+.github/archive/SDLC_SCENARIOS.md
+.github/archive/SKILL.md
+.github/archive/skills.md
+.github/archive/TDD_FRAMEWORK.md
+.github/archive/TECHNICAL_STORY_AGENT.md
+.github/archive/validation.yml
+.github/archive/VISUAL_SUMMARY.md
+.github/archive/skills/README.md
+.github/archive/skills/architecture/design_api.yml
+.github/archive/skills/communication/notify.yml
+.github/archive/skills/deployment/deploy.yml
+.github/archive/skills/development/generate_code.yml
+.github/archive/skills/documentation/generate_docs.yml
+.github/archive/skills/meta/skill_creator.yml
+.github/archive/skills/requirement/analyze.yml
+.github/archive/skills/security/scan_code.yml
+.github/archive/skills/testing/run_tests.yml
+.github/archive/workflows/ai-agent-orchestration.yml

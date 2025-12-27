@@ -1,0 +1,761 @@
+# Orchestrator Agent - Governance-First Coordinator
+# Version: 3.0 (Cost-Bounded, Auto-Triggered, Policy-Driven)
+# Hard PRU Limit: 100 total
+# Default Execution: 0 PRU (Copilot + static tools)
+# Escalation: Mini model only when justified
+
+metadata:
+  version: "3.0"
+  governance_model: strict
+  total_pru_limit: 100
+  default_cost: 0
+  execution_model: auto_trigger_on_risk
+  mandatory_human_gates: [pr_review, deployment]
+  mcp_restriction: sandboxed_repo_only
+
+# ==============================================================================
+# PRINCIPLE: AI VALIDATION ONLY WHEN JUSTIFIED
+# Default = Copilot + static tools (0 PRU)
+# Escalate = Mini model when deterministic analysis insufficient
+# ==============================================================================
+
+agents:
+  scope_validator:
+    id: scope_validator
+    model: gpt-4o-mini
+    pru_cost: 8
+    trigger: on_commit_or_pr
+    purpose: classify change scope and routing
+    mcp_access: [github, filesystem]
+    
+    skills_used:
+      - classify_risk  # 8 PRU - determines routing
+      - estimate_complexity  # 0 PRU - informational
+    
+    decision_tree:
+      simple_change:
+        conditions:
+          - files_changed < 3
+          - lines_changed < 50
+          - no_state_machine_changes
+          - tests_present
+        action: route_to_copilot_only
+        pru_used: 0
+        
+      medium_change:
+        conditions:
+          - files_changed < 10
+          - lines_changed < 200
+          - follows_existing_patterns
+        action: copilot_with_mini_validation
+        pru_used: 8
+        
+      complex_change:
+        conditions:
+          - files_changed >= 10
+          - OR lines_changed >= 200
+          - OR state_machine_changes
+        action: escalate_to_logic_validator
+        pru_used: 48  # 8 scope + 40 logic
+    
+    outputs:
+      risk_level: [TRIVIAL, LOW, MEDIUM, HIGH, CRITICAL]
+      route_to: [copilot_only, logic_validator, adversarial_test]
+      estimated_pru: integer
+      justification: structured_reason
+  
+  logic_risk_validator:
+    id: logic_risk_validator
+    model: gpt-4o
+    pru_cost: 40
+    trigger: when_scope_validator_escalates
+    purpose: validate state transitions and business logic
+    mcp_access: [filesystem, database]
+    
+    skills_used:
+      - validate_state_transitions  # 40 PRU - core logic check
+      - validate_business_logic  # included in agent cost
+      - check_edge_cases  # included in agent cost
+    
+    invocation_rules:
+      required_conditions:
+        - risk_level >= MEDIUM
+        - OR state_machine_modified
+        - OR new_business_logic
+      skip_conditions:
+        - risk_level < MEDIUM
+        - AND tests_pass
+        - AND coverage >= 85%
+    
+    validation_checks:
+      - state_transition_validity
+      - business_rule_compliance
+      - edge_case_coverage
+      - concurrent_safety
+    
+    outputs:
+      validation_status: [PASS, FAIL, UNCERTAIN]
+      issues_found: structured_list
+      remediation: actionable_steps
+      confidence: float
+  
+  implementation_agent:
+    id: implementation_agent
+    model: none  # Uses Copilot + static tools
+    pru_cost: 0
+    trigger: after_validation_pass OR manual
+    purpose: code generation, refactoring, test writing
+    mcp_access: [filesystem, github]
+    
+    skills_used:
+      - generate_code  # 0 PRU - Copilot
+      - refactor_code  # 0 PRU - Copilot
+      - write_test  # 0 PRU - Copilot
+      - fix_bug  # 0 PRU - Copilot
+    
+    execution_model:
+      code_generation:
+        tool: github_copilot
+        context: [existing_patterns, type_hints, docstrings]
+        quality_gates: [ruff, mypy, pytest]
+      
+      refactoring:
+        tool: github_copilot
+        context: [code_smells, best_practices, prd]
+        validation: [static_analysis, test_coverage]
+      
+      test_writing:
+        tool: github_copilot
+        context: [code_under_test, test_patterns, coverage_gaps]
+        target_coverage: 85%
+    
+    invocation_rules:
+      execute_when:
+        - feature_request
+        - bug_fix_required
+        - refactoring_needed
+        - test_coverage < 85%
+      parallel_with:
+        - validation_agent  # Run tests after code gen
+        - documentation_agent  # Update docs with code
+    
+    outputs:
+      code_generated: boolean
+      files_modified: list
+      tests_written: integer
+      coverage_delta: float
+  
+  adversarial_test_agent:
+    id: adversarial_test_agent
+    model: gpt-4o
+    pru_cost: 35
+    trigger: risk_level >= HIGH OR security_critical
+    purpose: generate adversarial test cases
+    mcp_access: [filesystem]
+    
+    skills_used:
+      - generate_exploit_tests  # 35 PRU - adversarial test generation
+      - assess_attack_surface  # included in agent cost
+    
+    invocation_rules:
+      required_conditions:
+        - risk_level >= HIGH
+        - OR security_flag = true
+        - OR payment_logic_changed
+      always_skip:
+        - risk_level < HIGH
+        - AND no_security_implications
+    
+    outputs:
+      test_cases_generated: integer
+      exploit_scenarios: structured_list
+      severity: [LOW, MEDIUM, HIGH, CRITICAL]
+  
+  pru_governance:
+    id: pru_governance
+    model: none
+    pru_cost: 0
+    trigger: every_operation
+    purpose: track budget and enforce limits
+    
+    skills_used:
+      - track_pru_usage  # 0 PRU - accounting only
+      - enforce_budget_limits  # 0 PRU - policy enforcement
+    
+    accounting:
+      session_budget: 100
+      enforcement:
+        - block_if_exceeded
+        - warn_at_75_percent
+        - log_all_usage
+      
+      audit_log:
+        format: structured_json
+        fields: [timestamp, agent, pru, operation, justification]
+  
+  technical_story_agent:
+    id: technical_story_agent
+    model: none  # Uses Copilot + optional GPT-4o-mini
+    pru_cost: 0-8  # 0 Copilot, 8 if AI validation
+    trigger: prd_modified OR manual
+    purpose: story creation, epic decomposition, timeline management
+    mcp_access: [filesystem, github]
+    
+    skills_used:
+      - analyze_prd_changes  # 0 PRU - Copilot
+      - create_user_story  # 0 PRU - Copilot
+      - estimate_complexity  # 0-8 PRU - Copilot + optional AI
+      - decompose_epic  # 0 PRU - Copilot
+      - maintain_timeline  # 0 PRU - Copilot
+      - track_dependencies  # 0 PRU - Copilot
+    
+    cli_integration:
+      analyze_changes: python cli/story_analyzer.py --prd Updated_PRD.md
+      create_story: python cli/story_creator.py --epic EPIC-123
+      estimate_story: python cli/story_estimator.py --story STORY-456 --validate-ai
+      update_timeline: python cli/timeline_manager.py --sprint current
+    
+    invocation_rules:
+      execute_when:
+        - prd_files_modified
+        - epic_created
+        - estimate_requested
+        - timeline_drift_detected
+      
+      ai_validation_trigger:
+        - estimate >= 8_story_points
+        - OR uncertainty_high
+        - model: gpt-4o-mini
+        - cost: 8_pru
+    
+    outputs:
+      stories_created: integer
+      estimates_calculated: integer
+      timeline_updated: boolean
+      ai_validations_used: integer
+
+# ==============================================================================
+# CLI TOOLS INTEGRATION
+# ==============================================================================
+
+cli_tools:
+  # Lightweight Python utilities for local execution
+  # No network calls, structured stdout, deterministic
+  
+  scope_validator:
+    command: python cli/scope_validator.py
+    usage: --files FILE... --lines N
+    output: json
+    purpose: classify change risk
+    invoked_by: scope_validator_agent
+  
+  logic_validator:
+    command: python cli/logic_validator.py
+    usage: --code FILE... --criteria TEXT --risk LEVEL
+    output: json
+    purpose: validate business logic (AI placeholder)
+    invoked_by: logic_risk_validator_agent
+  
+  adversarial_tests:
+    command: python cli/adversarial_tests.py
+    usage: --target FILE --format python|json
+    output: python_code | json
+    purpose: generate security test skeletons
+    invoked_by: adversarial_test_agent
+  
+  pru_tracker:
+    command: python cli/pru_tracker.py
+    usage: log --agent NAME --model NAME --pru N --context TEXT | report --period today|session|all
+    output: json
+    storage: logs/pru_usage.csv
+    purpose: log and report PRU usage
+    invoked_by: pru_governance_agent
+  
+  makefile_wrapper:
+    commands:
+      - make validate-scope FILES='...' LINES=N
+      - make validate-logic FILES='...' CRITERIA='...' RISK=MEDIUM
+      - make gen-adversarial TARGET='...'
+      - make track-pru AGENT=... MODEL=... PRU=N CONTEXT='...'
+      - make report PERIOD=today
+  
+  bash_wrapper:
+    script: ./cli.sh
+    commands:
+      - ./cli.sh scope-validate file1.py --lines 50
+      - ./cli.sh logic-validate service.py --criteria '...' --risk MEDIUM
+      - ./cli.sh adversarial orders.py
+      - ./cli.sh track agent model pru context
+      - ./cli.sh report today
+
+# ==============================================================================
+# SDLC SUPPORT AGENTS (EXTENSIBLE)
+# ==============================================================================
+
+# Additional agents may be added for specific SDLC tasks
+# All agents MUST:
+# - Invoke skills from skills_v3.yml
+# - Track PRU usage via pru_governance
+# - Respect 100 PRU total budget
+# - Follow MCP sandboxing policy
+# - Emit structured outputs
+
+sdlc_support_agents:
+  # Examples of extensible support agents:
+  # - documentation_generator (uses code_generation skills)
+  # - deployment_orchestrator (uses deployment skills)
+  # - monitoring_agent (uses observability skills)
+  # - security_scanner (uses static_validation skills)
+  
+  integration_pattern:
+    agent_invokes_skill: "agents/{agent_id}/invoke/{skill_name}"
+    skill_execution: "defined in skills_v3.yml"
+    budget_tracking: "via pru_governance agent"
+
+# ==============================================================================
+# ROUTING POLICY - DETERMINISTIC
+# ==============================================================================
+
+routing_policy:
+  default: copilot_only
+  
+  trivial:
+    conditions: [typo_fix, doc_only, whitespace]
+    action: skip_validation
+    pru_cost: 0
+  
+  simple:
+    conditions: [files<=2, lines<=50, tests_present]
+    agents: [scope_validator]
+    pru_cost: 8
+  
+  medium:
+    conditions: [files<=10, lines<=200]
+    agents: [scope_validator, logic_risk_validator]
+    pru_cost: 48
+  
+  high_risk:
+    conditions: [state_machine_change, security_critical]
+    agents: [scope_validator, logic_risk_validator, adversarial_test_agent]
+    pru_cost: 83
+    human_approval: mandatory
+
+# ==============================================================================
+# HUMAN GATES - NON-NEGOTIABLE
+# ==============================================================================
+
+human_gates:
+  pr_review:
+    required: always
+    bypass: never
+  
+  deployment:
+    required: always
+    environments:
+      staging: team_lead
+      production: tech_lead + ops_lead
+
+# ==============================================================================
+# MCP POLICY - SANDBOXED
+# ==============================================================================
+
+mcp_policy:
+  allowed:
+    github: [read_pr, read_files, get_diff]
+    filesystem: [read, list]  # repo_root_only
+    database: [read_schema]
+  
+  forbidden:
+    - network_access
+    - external_apis
+    - system_commands
+    - write_operations
+
+# ==============================================================================
+# BUDGET ENFORCEMENT
+# ==============================================================================
+
+budget_enforcement:
+  hard_limit: 100
+  allocation:
+    reserved_emergency: 15
+    typical_pr: 50
+    complex_feature: 85
+  
+  overrun_prevention:
+    pre_check: true
+    fail_fast: true
+    rollback_on_exceeded: true
+
+# ==============================================================================
+# TRIGGERS
+# ==============================================================================
+
+triggers:
+  automatic:
+    on_commit: [scope_validator, static_analysis]
+    on_pr: [scope_validator, logic_risk_validator]
+    on_risk: [adversarial_test_agent]
+  
+  manual_only:
+    - deployment
+    - emergency_hotfix
+
+# ==============================================================================
+# FALLBACK BEHAVIOR
+# ==============================================================================
+
+fallback:
+  on_agent_failure: block_merge
+  on_budget_exceeded: static_tools_only
+  on_timeout: cancel_and_notify
+
+# ==============================================================================
+# OUTPUT FORMAT - STRUCTURED ONLY
+# ==============================================================================
+
+output_format:
+  required: [risk_level, pru_used, status, issues]
+  forbidden: [verbose_text, apologies, uncertainty]
+  style: technical_spec
+
+# ==============================================================================
+# SDLC SUPPORT AGENTS (EXTENSIBLE)
+# ==============================================================================
+
+# Additional agents for SDLC workflows beyond core 4 governance agents
+# Integration pattern: invoke skills, track PRU, respect budget
+
+sdlc_agents:
+  technical_story:
+    skills: [analyze_prd_changes, create_user_story, estimate_complexity, decompose_epic, maintain_timeline, track_dependencies]
+    pru: 0-8  # 0 Copilot, 8 AI validation
+    trigger: prd_modified_or_manual
+    integration: pre_implementation_planning
+    cli: [cli/story_analyzer.py, cli/story_creator.py, cli/story_estimator.py, cli/timeline_manager.py]
+  
+  implementation:
+    skills: [generate_code, refactor_code, write_test, fix_bug]
+    pru: 0  # Copilot
+    trigger: post_validation_or_manual
+    integration: parallel_with_validation_and_docs
+    
+  validation:
+    skills: [test_execution, security_scan, dependency_audit, code_quality, type_checking, diagnose_failure]
+    pru: 0-8
+    trigger: every_pr
+    integration: runs_after_implementation
+    cli: [cli/scope_validator.py, cli/logic_validator.py]
+    
+  documentation:
+    skills: [generate_docs, update_api_spec]
+    pru: 0  # Copilot
+    trigger: post_merge
+    integration: parallel_with_implementation
+    
+  deployment:
+    skills: [build_image, deploy_service]
+    pru: 0  # GitHub Actions
+    trigger: manual
+    integration: runs_after_tests_pass
+    
+  monitoring:
+    skills: [collect_metrics, analyze_logs, diagnose_issue]
+    pru: 0-8
+    trigger: incident
+    integration: post_deployment
+    cli: [cli/pru_tracker.py]
+
+# Pattern for new agents:
+# 1. Define skills in skills_v3.yml
+# 2. Track PRU via pru_governance
+# 3. Respect 100 PRU total budget
+# 4. Specify integration points
+# 5. Use 0 PRU default (Copilot/static tools)
+# 6. Add CLI tools if needed
+
+# ==============================================================================
+# RISK CLASSIFICATION
+# ==============================================================================
+
+risk_classifier:
+  trivial: [typo, whitespace, comments]
+  low: [docs, tests_only, dependency_minor]
+  medium: [new_endpoint_pattern, refactor, bug_fix]
+  high: [state_machine, security, payment, auth]
+  critical: [incident, breach, compliance]
+
+# ==============================================================================
+# SKIP RULES
+# ==============================================================================
+
+skip_rules:
+  never_validate: [dependabot, "*.md", docs/**]
+  skip_logic: [risk<LOW, tests_pass]
+  skip_adversarial: [risk<HIGH]
+
+version_info:
+  version: "3.0"
+  breaking_changes: true
+  deprecates: [orchestrator.yml v2.0]
+        - security_findings.severity >= HIGH
+        - gate_timeout approaching
+        - haiku_confidence < 0.8
+  
+  skill_creator_integration:
+    # Use meta-skill to generate missing skills dynamically
+    enabled: true
+    model: claude-haiku-4.5
+    pru: 5  # Cost of generating new skill
+    
+    workflow:
+      - step: "Check existing skills"
+        action: "Query skills library for required capability"
+      
+      - step: "If skill missing"
+        action: "Invoke meta.skill_creator with requirement"
+        inputs:
+          requirement: "{capability_description}"
+          category: "{inferred_category}"
+          complexity: "{based_on_context}"
+      
+      - step: "Save generated skill"
+        action: "Write to .github/skills/{category}/{skill_name}.yml"
+      
+      - step: "Use new skill immediately"
+        action: "Invoke generated skill in current workflow"
+    
+    example: |
+      # User asks to "validate database migration safety"
+      # No existing skill found
+      # Orchestrator:
+      1. Invokes meta.skill_creator (5 PRU, Haiku)
+      2. Generates testing.validate_migrations.yml
+      3. Uses new skill immediately (10 PRU)
+      # Total: 15 PRU instead of failing or manual skill creation
+  
+  adaptive_budgeting:
+    # Dynamically adjust PRU limits based on PR history
+    enabled: true
+    
+    rules:
+      - if: "pr_author.trust_score > 0.9"
+        then: "max_pru += 20"  # Trusted developers get more budget
+      
+      - if: "tests_pass_locally == true"
+        then: "skip_validation_agent"  # Save 20 PRU
+      
+      - if: "pr_size < 50 lines AND similar_pr_succeeded"
+        then: "fast_track"  # Use cached analysis, 5 PRU only
+      
+      - if: "time_of_day == off_peak"
+        then: "use_slower_cheaper_models"  # Optimize for cost
+  
+  cost_prediction:
+    # Predict cost before execution
+    enabled: true
+    model: claude-haiku-4.5
+    pru: 2
+    
+    inputs:
+      - pr_metadata (size, files changed, author)
+      - historical_pr_data (similar PRs and their costs)
+      - current_budget_status
+    
+    outputs:
+      predicted_pru: number
+      predicted_cost: string
+      confidence: number
+      recommendation: string  # proceed/defer/optimize
+    
+    example_output:
+      predicted_pru: 95
+      predicted_cost: "$0.010"
+      confidence: 0.85
+      recommendation: "proceed"  # Under $0.015 threshold
+  
+  parallel_orchestration:
+    enabled: true
+    max_concurrent: 5  # Increased from 3
+    
+    execution_plan:
+      phase1_independent:
+        - quick_validation (FREE tools, 0 PRU)
+        - cost_prediction (Haiku, 2 PRU)
+        run: parallel
+      
+      phase2_routing:
+        - tier1_routing (Haiku, 5 PRU)
+        depends_on: [phase1_independent]
+      
+      phase3_agents:
+        - analysis (if needed, 40 PRU)
+        - implementation (35 PRU)
+        run: parallel
+        depends_on: [phase2_routing]
+      
+      phase4_validation:
+        - validation (20 PRU)
+        depends_on: [phase3_agents]
+      
+      phase5_deployment:
+        - deployment (if needed, 30 PRU)
+        depends_on: [phase4_validation]
+  
+  smart_gates:
+    GATE-001:  # Requirements review
+      model: claude-haiku-4.5
+      pru: 3
+      auto_skip_conditions:
+        - complexity == "simple"
+        - confidence > 0.9
+        - similar_pr_approved_recently
+      
+      evaluation_criteria:
+        - breaking_changes: boolean
+        - state_machine_impact: boolean
+        - new_dependencies: boolean
+      
+      skip_rate_target: 75%  # Increased from 70%
+    
+    GATE-002:  # Architecture review
+      model: claude-sonnet-4.5  # Needs deeper analysis
+      pru: 10
+      auto_skip_conditions:
+        - uses_existing_patterns_only
+        - no_api_changes
+        - no_db_schema_changes
+      
+      skip_rate_target: 80%
+    
+    GATE-003:  # Security review
+      model: claude-sonnet-4.5
+      pru: 10
+      never_skip_if:
+        - security_findings.severity in [CRITICAL, HIGH]
+      
+      auto_approve_if:
+        - zero_findings AND tests_pass
+      
+      skip_rate_target: 85%
+    
+    GATE-004:  # Deployment approval
+      model: claude-haiku-4.5
+      pru: 3
+      auto_skip_conditions:
+        - environment == "staging"
+        - off_peak_hours
+        - tests_pass
+        - no_hotfix
+      
+      skip_rate_target: 70%
+  
+  mcp_integration:
+    # Enhanced MCP usage to reduce AI calls
+    github:
+      operations:
+        - get_pr_metadata  # Author, size, files
+        - get_pr_diff  # Changes
+        - get_commit_history  # Similar PRs
+        - check_checks_status  # CI/CD results
+      pru_saved: ~10
+    
+    filesystem:
+      operations:
+        - list_changed_files
+        - read_project_config
+        - detect_patterns
+      pru_saved: ~5
+    
+    custom_cache:
+      # NEW: Custom caching layer
+      enabled: true
+      ttl: 3600  # 1 hour
+      cache_keys:
+        - pr_complexity_{pr_id}
+        - similar_prs_{file_pattern}
+        - skill_availability_{capability}
+  
+  optimization_techniques:
+    1_model_tier_routing:
+      description: "Use Haiku for routing, Sonnet only for complex decisions"
+      pru_saved: 10  # vs always using Sonnet
+    
+    2_skill_creator:
+      description: "Generate missing skills instead of manual creation"
+      time_saved: "hours → minutes"
+    
+    3_adaptive_budgeting:
+      description: "Adjust limits based on context and history"
+      pru_saved: 5-20
+    
+    4_cost_prediction:
+      description: "Predict and optimize before execution"
+      pru_saved: 0  # Enables informed decisions
+    
+    5_enhanced_caching:
+      description: "Cache routing decisions and patterns"
+      pru_saved: 5-10
+  
+  industry_patterns:
+    - pattern: "Multi-model orchestration"
+      source: "Anthropic Claude ecosystem best practices"
+      benefit: "40% cost reduction via tiered model selection"
+    
+    - pattern: "Meta-skill generation"
+      source: "Anthropic skills repository"
+      benefit: "Dynamic capability expansion without manual work"
+    
+    - pattern: "Adaptive resource allocation"
+      source: "Google Cloud AI Platform"
+      benefit: "Context-aware budgeting based on trust and history"
+    
+    - pattern: "Cost prediction"
+      source: "AWS Cost Explorer patterns"
+      benefit: "Proactive cost management"
+  
+  metrics:
+    target:
+      pru_per_pr: 80  # Reduced from 95
+      cost_per_pr: $0.008  # Maintained
+      time_per_pr: 3-4 min  # Improved from 4-5
+    
+    tracking:
+      - tier1_usage_percentage  # % of PRs handled by Haiku only
+      - tier2_escalation_rate  # % requiring Sonnet
+      - skill_generation_frequency  # How often new skills created
+      - gate_skip_rate  # % of gates auto-skipped
+      - cost_prediction_accuracy  # Predicted vs actual cost
+  
+  usage_example: |
+    # PR created
+    1. Quick validation (FREE tools): 0 PRU, 1-2 min
+    2. Cost prediction (Haiku): 2 PRU, 10 sec
+    3. Tier-1 routing (Haiku): 5 PRU, 15 sec
+       → Classifies as "medium"
+       → Routes to: analysis, implementation, validation
+       → Confidence: 0.9 (no Sonnet needed)
+    4. Check skills: All exist
+    5. Execute agents (parallel): 95 PRU, 3 min
+    6. Gate evaluation (Haiku): 3 PRU, 10 sec
+       → GATE-001: Auto-skip (simple change)
+       → GATE-003: Auto-skip (no findings)
+    
+    Total: 105 PRU, $0.010, 4 min
+    
+    # Complex PR with new requirement
+    1-3. Same as above: 7 PRU
+    4. Check skills: Missing "validate_migration" skill
+       → Invoke skill_creator (Haiku): 5 PRU, 30 sec
+       → Generate new skill: testing.validate_migrations.yml
+    5. Execute agents (parallel): 150 PRU, 5 min
+    6. Gate evaluation (Sonnet for GATE-002): 10 PRU, 20 sec
+       → Sonnet analyzes architecture impact
+    
+    Total: 172 PRU, $0.017, 6 min
+    # Over budget, but worth it for complex + new capability
+
+# Cost comparison:
+# v2.0 (old): 25 PRU orchestrator + 125 PRU agents = 150 total
+# v3.0 (new): 15 PRU orchestrator + 105 PRU agents = 120 typical
+# Savings: 20% cheaper on average
