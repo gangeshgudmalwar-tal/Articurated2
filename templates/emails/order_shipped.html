@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Order Shipped</title>
+</head>
+
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h1 style="color: #333;">Your Order Has Shipped!</h1>
+    <p>Dear Customer,</p>
+    <p>Your order <strong>#{{ order_id }}</strong> has been shipped.</p>
+
+    <h2>Shipping Details</h2>
+    <p><strong>Carrier:</strong> {{ carrier }}</p>
+    <p><strong>Tracking Number:</strong> {{ tracking_number }}</p>
+
+    <p>Your invoice is attached.</p>
+
+    <p>Best regards,<br>ArtiCurated Team</p>
+</body>
+
+</html>

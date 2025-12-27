@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Refund Processed</title>
+</head>
+
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h1 style="color: #333;">Refund Processed</h1>
+    <p>Dear Customer,</p>
+    <p>Your refund for return request <strong>#{{ return_id }}</strong> has been processed.</p>
+
+    <h2>Refund Details</h2>
+    <p><strong>Amount:</strong> ${{ refund_amount }}</p>
+    <p><strong>Transaction ID:</strong> {{ transaction_id }}</p>
+
+    <p>The refund should appear in your account within 5-7 business days.</p>
+
+    <p>Best regards,<br>ArtiCurated Team</p>
+</body>
+
+</html>

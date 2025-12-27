@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: articurated_db
+    environment:
+      POSTGRES_USER: articurated
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: articurated_orders
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U articurated"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - articurated_network
+
+  # Redis (Message Broker + Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: articurated_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - articurated_network
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: articurated_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app/app
+      - ./storage:/app/storage
+      - ./templates:/app/templates
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://articurated:dev_password@db:5432/articurated_orders
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      SECRET_KEY: dev-secret-key-change-in-production
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      STORAGE_TYPE: local
+      STORAGE_PATH: /app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - articurated_network
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: articurated_worker
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./app:/app/app
+      - ./storage:/app/storage
+      - ./templates:/app/templates
+    environment:
+      DATABASE_URL: postgresql://articurated:dev_password@db:5432/articurated_orders
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      STORAGE_TYPE: local
+      STORAGE_PATH: /app/storage
+    depends_on:
+      - db
+      - redis
+      - api
+    networks:
+      - articurated_network
+
+  # Celery Beat (Scheduled Tasks)
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: articurated_beat
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    volumes:
+      - ./app:/app/app
+    environment:
+      DATABASE_URL: postgresql://articurated:dev_password@db:5432/articurated_orders
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+    depends_on:
+      - db
+      - redis
+    networks:
+      - articurated_network
+
+  # Flower (Celery Monitoring)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: articurated_flower
+    command: celery -A app.tasks.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      DATABASE_URL: postgresql://articurated:dev_password@db:5432/articurated_orders
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+    networks:
+      - articurated_network
+
+  # MailHog (Development Email Server)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: articurated_mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8025"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - articurated_network
+
+volumes:
+  postgres_data:
+
+networks:
+  articurated_network:
+    driver: bridge
