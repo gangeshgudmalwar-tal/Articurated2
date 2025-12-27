@@ -1,0 +1,327 @@
+# Implementation Agent - Code Generation & Refactoring
+# Version: 3.0 (Copilot-Driven, 0 PRU)
+# Model: GitHub Copilot (FREE)
+# Trigger: Post-validation OR manual
+
+metadata:
+  version: "3.0"
+  agent_id: implementation_agent
+  execution_model: copilot_static_tools
+  pru_cost: 0
+  trigger: [post_validation_pass, manual_request]
+  parallel_with: [validation_agent, documentation_agent]
+
+# ==============================================================================
+# SKILLS INVOKED (From skills_v3.yml)
+# ==============================================================================
+
+skills_invoked:
+  - generate_code     # 0 PRU - Copilot-based code generation
+  - refactor_code     # 0 PRU - Copilot-based refactoring
+  - write_test        # 0 PRU - Copilot test generation
+  - fix_bug           # 0 PRU - Copilot bug fixing
+
+# ==============================================================================
+# EXECUTION MODEL
+# ==============================================================================
+
+code_generation:
+  tool: github_copilot
+  cost: 0
+  
+  context_loading:
+    - existing_patterns     # Follow patterns from codebase
+    - type_hints           # Use full type annotations
+    - docstrings           # Match existing doc style
+    - prd_requirements     # Reference Updated_PRD.md
+    - api_specification    # Follow API-SPECIFICATION.yml
+    - state_machine_rules  # Respect ORDER_TRANSITIONS, RETURN_TRANSITIONS
+  
+  quality_gates:
+    static_analysis:
+      - ruff              # Code quality checks
+      - mypy              # Type checking
+      - bandit            # Security scan (optional)
+    
+    tests:
+      - pytest            # All tests must pass
+      - coverage >= 85%   # Coverage threshold
+    
+    blocking_conditions:
+      - ruff_errors > 0
+      - mypy_errors > 0
+      - tests_failing > 0
+      - coverage < 85%
+
+refactoring:
+  tool: github_copilot
+  cost: 0
+  
+  patterns:
+    code_smells:
+      - long_methods      # Extract to smaller functions
+      - duplicate_code    # DRY principle
+      - complex_conditionals  # Simplify logic
+      - magic_numbers     # Use named constants
+    
+    best_practices:
+      - type_hints        # Add full annotations
+      - docstrings        # Document public APIs
+      - error_handling    # Explicit exception handling
+      - separation_of_concerns  # Service/model/schema layers
+  
+  validation:
+    - static_analysis    # ruff + mypy pass
+    - test_coverage      # Maintain or improve coverage
+    - no_breaking_changes  # API compatibility
+
+test_writing:
+  tool: github_copilot
+  cost: 0
+  
+  context:
+    - code_under_test    # Implementation to test
+    - test_patterns      # Existing test structure (pytest)
+    - coverage_gaps      # Uncovered lines/branches
+    - edge_cases         # From PRD requirements
+  
+  test_types:
+    unit_tests:
+      - service_layer    # OrderService, ReturnService
+      - state_machine    # All transitions
+      - utilities        # Helper functions
+    
+    integration_tests:
+      - api_endpoints    # FastAPI routes
+      - database_ops     # SQLAlchemy queries
+      - background_jobs  # Celery tasks
+    
+    e2e_tests:
+      - order_lifecycle  # Create → Ship → Deliver
+      - return_workflow  # Request → Approve → Complete
+  
+  target_coverage: 85%
+  
+  quality:
+    - parametrized_tests  # Use @pytest.mark.parametrize
+    - descriptive_names   # test_transition_to_paid_from_pending
+    - arrange_act_assert  # Clear test structure
+    - isolated_tests      # No interdependencies
+
+bug_fixing:
+  tool: github_copilot
+  cost: 0
+  
+  context:
+    - error_trace        # Stack trace from logs
+    - recent_changes     # git diff
+    - test_failures      # Failing test output
+    - related_code       # Affected modules
+  
+  workflow:
+    1. reproduce_bug     # Add failing test
+    2. fix_code          # Minimal change to pass test
+    3. verify_fix        # All tests pass
+    4. refactor          # Improve if needed
+    5. update_tests      # Add regression test
+
+# ==============================================================================
+# INVOCATION RULES
+# ==============================================================================
+
+execute_when:
+  feature_request:
+    conditions:
+      - user_story_defined
+      - api_spec_updated
+      - validation_passed
+    actions:
+      - generate_endpoint
+      - generate_service_method
+      - generate_schema
+      - generate_tests
+  
+  bug_fix_required:
+    conditions:
+      - bug_report_filed
+      - reproduction_steps_clear
+    actions:
+      - add_failing_test
+      - fix_implementation
+      - verify_regression_coverage
+  
+  refactoring_needed:
+    conditions:
+      - code_smells_detected
+      - OR complexity_high
+      - OR coverage_below_threshold
+    actions:
+      - refactor_implementation
+      - maintain_test_coverage
+      - verify_no_regressions
+  
+  test_coverage_gap:
+    conditions:
+      - coverage < 85%
+    actions:
+      - identify_uncovered_lines
+      - generate_tests
+      - verify_coverage_improved
+
+# ==============================================================================
+# PARALLEL EXECUTION
+# ==============================================================================
+
+parallel_with:
+  validation_agent:
+    sequence:
+      1. implementation_agent.generate_code()
+      2. validation_agent.test_execution()  # Run immediately after
+      3. IF tests_pass THEN continue
+      4. IF tests_fail THEN implementation_agent.fix_bug()
+  
+  documentation_agent:
+    sequence:
+      1. implementation_agent.generate_code()
+      2. documentation_agent.generate_docs()  # Update in parallel
+      3. documentation_agent.update_api_spec()  # Sync with code
+
+# ==============================================================================
+# OUTPUTS (STRUCTURED)
+# ==============================================================================
+
+outputs:
+  code_generated:
+    type: boolean
+    description: Whether code generation completed
+  
+  files_modified:
+    type: list[str]
+    description: Paths to modified files
+    example: ["app/api/v1/orders.py", "app/services/order_service.py"]
+  
+  tests_written:
+    type: integer
+    description: Number of new/updated tests
+  
+  coverage_delta:
+    type: float
+    description: Change in test coverage percentage
+    example: +2.5  # Increased coverage by 2.5%
+  
+  quality_status:
+    type: enum
+    values: [PASS, FAIL_RUFF, FAIL_MYPY, FAIL_TESTS, FAIL_COVERAGE]
+  
+  blocking_issues:
+    type: list[dict]
+    structure:
+      - tool: str  # ruff, mypy, pytest
+      - severity: str  # error, warning
+      - message: str
+      - file: str
+      - line: int
+
+# ==============================================================================
+# INTEGRATION WITH GOVERNANCE
+# ==============================================================================
+
+governance_integration:
+  pru_tracking:
+    implementation_agent: 0  # Always 0 PRU
+    reports_to: pru_governance
+  
+  budget_compliance:
+    contributes: 0
+    respects: 100_pru_total_limit
+  
+  audit_trail:
+    logs:
+      - code_generated_event
+      - tests_written_count
+      - coverage_change
+      - quality_gate_results
+
+# ==============================================================================
+# USAGE EXAMPLES
+# ==============================================================================
+
+examples:
+  feature_add_partial_refund:
+    input:
+      request: "Add partial refund support to returns"
+      context: ["Updated_PRD.md", "API-SPECIFICATION.yml"]
+    
+    actions:
+      1. generate_code:
+          - app/schemas/return_request.py  # Add refund_percentage field
+          - app/services/return_service.py  # Add calculate_partial_refund()
+          - app/api/v1/returns.py  # Update PATCH endpoint
+      
+      2. write_test:
+          - tests/unit/test_return_service.py  # Unit tests
+          - tests/integration/test_returns_api.py  # API tests
+      
+      3. refactor_code:
+          - extract_refund_calculation  # Move to utility
+          - add_type_hints
+          - update_docstrings
+    
+    output:
+      code_generated: true
+      files_modified: [
+        "app/schemas/return_request.py",
+        "app/services/return_service.py",
+        "app/api/v1/returns.py",
+        "tests/unit/test_return_service.py",
+        "tests/integration/test_returns_api.py"
+      ]
+      tests_written: 8
+      coverage_delta: +3.2
+      quality_status: PASS
+
+  bug_fix_state_transition:
+    input:
+      error: "Cannot transition from SHIPPED to CANCELLED"
+      trace: "InvalidStateTransitionError at line 42"
+    
+    actions:
+      1. add_failing_test:
+          - tests/unit/test_state_machine.py
+      
+      2. fix_bug:
+          - app/services/state_machine.py  # Update ORDER_TRANSITIONS
+      
+      3. verify_fix:
+          - pytest tests/unit/test_state_machine.py  # Pass
+    
+    output:
+      code_generated: false
+      files_modified: ["app/services/state_machine.py"]
+      tests_written: 1
+      coverage_delta: 0
+      quality_status: PASS
+
+# ==============================================================================
+# FALLBACK BEHAVIOR
+# ==============================================================================
+
+fallback:
+  on_copilot_unavailable:
+    action: manual_implementation
+    notification: immediate
+  
+  on_quality_gate_fail:
+    action: block_merge
+    notification: pr_comment
+    remediation: fix_issues_before_merge
+  
+  on_test_failure:
+    action: retry_fix
+    max_attempts: 3
+    escalate: manual_review
+
+version_info:
+  version: "3.0"
+  breaking_changes: false
+  replaces: implementation.yml v2.0

@@ -1,0 +1,397 @@
+# AI Skills - Governance-Aligned Execution Patterns
+# Version: 3.0
+# Default: Copilot + static tools (0 PRU)
+# Escalation: Mini model only when justified
+
+metadata:
+  version: "3.0"
+  governance_model: strict
+  default_execution: copilot_static_tools
+  ai_escalation: mini_model_only
+  skill_budget: included_in_agent_budget
+
+  # ==============================================================================
+  # AGENT-SKILL INVOCATION MODEL
+  # ==============================================================================
+
+  # Skills define HOW to execute operations (execution patterns)
+  # Agents decide WHEN to invoke skills (orchestration logic)
+  # Budget tracked at agent level, skills report cost metadata
+
+  # Invocation pattern: agents/{agent_id}/invoke/{skill_name}
+  # Example: scope_validator invokes classify_risk skill (8 PRU)
+
+  # ==============================================================================
+  # SKILL CATEGORIES
+  # ==============================================================================
+  # --------------------------------------------------------------------------
+  # STATIC ANALYSIS SKILLS (0 PRU)
+  # --------------------------------------------------------------------------
+
+  static_validation:
+    test_execution:
+      tool: pytest
+      cost: 0
+      command: pytest --cov=app --cov-report=json
+      outputs: [test_results, coverage_data]
+
+    security_scan:
+      tool: bandit
+      cost: 0
+      command: bandit -r app/ -f json
+      outputs: [findings, severity_counts]
+
+    dependency_audit:
+      tool: safety
+      cost: 0
+      command: safety check --json
+      outputs: [vulnerabilities, cve_list]
+
+    code_quality:
+      tool: ruff
+      cost: 0
+      command: ruff check app/ --output-format=json
+      outputs: [issues]
+
+    type_checking:
+      tool: mypy
+      cost: 0
+      command: mypy app/ --json-report
+      outputs: [type_errors]
+
+  # --------------------------------------------------------------------------
+  # CODE GENERATION SKILLS (0 PRU - COPILOT)
+  # --------------------------------------------------------------------------
+
+  code_generation:
+    generate_code:
+      tool: github_copilot
+      cost: 0
+      context: [existing_patterns, type_hints, docstrings]
+      outputs: code_file
+
+    refactor_code:
+      tool: github_copilot
+      cost: 0
+      context: [code_smells, best_practices]
+      outputs: refactored_code
+
+    fix_bug:
+      tool: github_copilot
+      cost: 0
+      context: [error_trace, recent_changes]
+      outputs: bug_fix
+
+    write_test:
+      tool: github_copilot
+      cost: 0
+      context: [code_under_test, test_patterns]
+      outputs: test_file
+
+  # --------------------------------------------------------------------------
+  # AI-ESCALATED SKILLS (8-40 PRU)
+  # --------------------------------------------------------------------------
+
+  scope_analysis:
+    classify_risk:
+      agent: scope_validator
+      model: gpt-4o-mini
+      cost: 8
+      trigger: on_commit_or_pr
+      inputs: [files_changed, lines_changed, diff]
+      outputs: [risk_level, route_to, estimated_pru]
+
+    estimate_complexity:
+      agent: scope_validator
+      model: gpt-4o-mini
+      cost: 8
+      trigger: when_routing_unclear
+      inputs: [pr_metadata, code_diff]
+      outputs: [complexity_score, agent_recommendation]
+
+  logic_validation:
+    validate_state_transitions:
+      agent: logic_risk_validator
+      model: gpt-4o
+      cost: 40
+      trigger: state_machine_modified
+      inputs: [state_changes, transition_rules]
+      outputs: [validation_status, issues, remediation]
+
+    validate_business_logic:
+      agent: logic_risk_validator
+      model: gpt-4o
+      cost: 40
+      trigger: risk >= MEDIUM
+      inputs: [business_rules, code_changes]
+      outputs: [compliance_status, violations]
+
+    analyze_edge_cases:
+      agent: logic_risk_validator
+      model: gpt-4o
+      cost: 40
+      trigger: complex_logic_detected
+      inputs: [code_paths, test_coverage]
+      outputs: [edge_cases_found, test_recommendations]
+
+  adversarial_testing:
+    generate_exploit_tests:
+      agent: adversarial_test_agent
+      model: gpt-4o
+      cost: 35
+      trigger: risk >= HIGH
+      inputs: [security_context, vulnerable_code]
+      outputs: [test_cases, exploit_scenarios]
+
+    assess_attack_surface:
+      agent: adversarial_test_agent
+      model: gpt-4o
+      cost: 35
+      trigger: security_critical
+      inputs: [api_endpoints, auth_logic]
+      outputs: [threat_vectors, mitigation_steps]
+  # --------------------------------------------------------------------------
+  # SDLC SUPPORT SKILLS (0-8 PRU)
+  # --------------------------------------------------------------------------
+
+  documentation:
+    generate_docs:
+      tool: github_copilot
+      cost: 0
+      context: [code_structure, api_patterns]
+      outputs: docstrings
+
+    update_api_spec:
+      tool: github_copilot
+      cost: 0
+      context: [endpoint_changes, schema_changes]
+      outputs: openapi_yaml
+
+  deployment:
+    build_image:
+      tool: docker
+      cost: 0
+      command: docker build -t app:latest .
+      outputs: [image_id]
+
+    deploy_service:
+      tool: github_actions
+      cost: 0
+      workflow: deploy.yml
+      outputs: [deployment_status, url]
+
+  monitoring:
+    collect_metrics:
+      tool: prometheus
+      cost: 0
+      query: scrape_metrics
+      outputs: [metrics_json]
+
+    analyze_logs:
+      tool: grep_or_ai
+      cost: 0-8 # 0 for grep, 8 for AI analysis
+      inputs: [log_files, error_pattern]
+      outputs: [anomalies, root_cause]
+
+    diagnose_issue:
+      agent: monitoring_agent
+      model: gpt-4o-mini
+      cost: 8
+      trigger: incident_detected
+      inputs: [metrics, logs, traces]
+      outputs: [diagnosis, remediation_steps]
+# ==============================================================================
+# SKILL INVOCATION RULES
+# ==============================================================================
+
+invocation_policy:
+  # Static skills: ALWAYS run
+  always_execute:
+    - test_execution
+    - security_scan
+    - dependency_audit
+    - code_quality
+    - type_checking
+
+  # AI skills: CONDITIONAL based on agent routing
+  conditional_execute:
+    classify_risk:
+      when: [on_commit, on_pr]
+      budget_check: true
+
+    validate_state_transitions:
+      when: [state_machine_modified]
+      requires: [classify_risk]
+      budget_check: true
+
+    generate_exploit_tests:
+      when: [risk >= HIGH, security_critical]
+      requires: [validate_business_logic]
+      budget_check: true
+
+# ==============================================================================
+# SKILL OUTPUTS - STRUCTURED ONLY
+# ==============================================================================
+
+output_standards:
+  test_execution:
+    format: junit_xml + json
+    required_fields: [total, passed, failed, duration, coverage]
+
+  security_scan:
+    format: json
+    required_fields: [findings, severity_counts, blocking]
+
+  classify_risk:
+    format: json
+    required_fields: [risk_level, route_to, estimated_pru, justification]
+
+  validate_state_transitions:
+    format: json
+    required_fields: [validation_status, issues, remediation, confidence]
+
+  generate_exploit_tests:
+    format: pytest_file
+    required_fields: [test_count, severity, exploit_scenarios]
+
+# ==============================================================================
+# BUDGET TRACKING
+# ==============================================================================
+
+budget_tracking:
+  # Skills don't track budget directly
+  # Agent invokes skill and tracks cost
+
+  accounting_responsibility: agent_level
+
+  skill_cost_metadata:
+    # Informational only for planning
+    test_execution: 0
+    security_scan: 0
+    classify_risk: 8
+    validate_state_transitions: 40
+    generate_exploit_tests: 35
+
+# ==============================================================================
+# SKILL COMPOSITION - DETERMINISTIC WORKFLOWS
+# ==============================================================================
+
+workflows:
+  simple_pr_validation:
+    skills:
+      - test_execution # 0 PRU
+      - security_scan # 0 PRU
+      - code_quality # 0 PRU
+    total_cost: 0
+
+  medium_pr_validation:
+    skills:
+      - classify_risk # 8 PRU
+      - validate_state_transitions # 40 PRU (if triggered)
+      - test_execution # 0 PRU
+      - security_scan # 0 PRU
+    total_cost: 8-48
+
+  high_risk_pr_validation:
+    skills:
+      - classify_risk # 8 PRU
+      - validate_state_transitions # 40 PRU
+      - generate_exploit_tests # 35 PRU
+      - test_execution # 0 PRU
+      - security_scan # 0 PRU
+    total_cost: 83
+
+# ==============================================================================
+# MIGRATION FROM v2.0
+# ==============================================================================
+
+deprecated_skills:
+  # These are now handled by Copilot (0 PRU)
+  - requirement.analyze # Use Copilot context
+  - architecture.design_api # Use Copilot patterns
+  - development.generate_code # Copilot default
+  - documentation.generate_docs # Copilot default
+
+  # These are absorbed into agents
+  - orchestrator.route # Now: scope_validator
+  - validation.synthesize # Now: validation_v3
+
+new_skills:
+  # New governance-aligned skills
+  - classify_risk # scope_validator
+  - validate_state_transitions # logic_risk_validator
+  - generate_exploit_tests # adversarial_test_agent
+
+# ==============================================================================
+# FALLBACK BEHAVIOR
+# ==============================================================================
+
+fallback:
+  on_skill_failure:
+    action: fail_safe_block
+    notification: immediate
+
+  on_tool_unavailable:
+    test_execution: use_unittest
+    security_scan: use_semgrep
+    type_checking: skip_advisory
+
+# ==============================================================================
+# AGENT-SKILL MAPPING (QUICK REFERENCE)
+# ==============================================================================
+
+agent_skill_mapping:
+  scope_validator:
+    invokes: [classify_risk, estimate_complexity]
+    pru_cost: 8
+
+  logic_risk_validator:
+    invokes:
+      [validate_state_transitions, validate_business_logic, check_edge_cases]
+    pru_cost: 40
+
+  adversarial_test_agent:
+    invokes: [generate_exploit_tests, assess_attack_surface]
+    pru_cost: 35
+
+  pru_governance:
+    invokes: [track_pru_usage, enforce_budget_limits]
+    pru_cost: 0
+
+  # SDLC Support Agents (Extensible)
+
+  implementation_agent:
+    invokes: [generate_code, refactor_code, write_test, fix_bug]
+    pru_cost: 0 # Copilot-based
+    integration: [parallel_with_validation, parallel_with_documentation]
+
+  validation_agent:
+    invokes:
+      [
+        test_execution,
+        security_scan,
+        dependency_audit,
+        code_quality,
+        type_checking,
+        diagnose_failure,
+      ]
+    pru_cost: 0-8 # 0 for static, 8 for AI diagnosis
+
+  documentation_agent:
+    invokes: [generate_docs, update_api_spec]
+    pru_cost: 0 # Copilot-based
+
+  deployment_agent:
+    invokes: [build_image, deploy_service]
+    pru_cost: 0 # GitHub Actions
+
+  monitoring_agent:
+    invokes: [collect_metrics, analyze_logs, diagnose_issue]
+    pru_cost: 0-8 # 0 for metrics, 8 for AI diagnosis
+
+# New agents follow same pattern: invoke skills, track PRU, respect budget
+
+version_info:
+  version: "3.0"
+  breaking_changes: true
+  replaces: skills.md v2.0

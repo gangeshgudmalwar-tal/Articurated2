@@ -1,0 +1,442 @@
+# Technical Story Agent - PRD Change Management
+# Version: 3.0 (Copilot + AI-Assisted, 0-8 PRU)
+# Model: GitHub Copilot + GPT-4o-mini (conditional)
+# Trigger: PRD change detection, manual story request
+
+metadata:
+  version: "3.0"
+  agent_id: technical_story_agent
+  execution_model: copilot_with_optional_ai
+  pru_cost: 0-8  # 0 for Copilot, 8 for AI estimate validation
+  trigger: [prd_modified, epic_request, manual_story_creation]
+  
+# ==============================================================================
+# SKILLS INVOKED (From skills_v3.yml)
+# ==============================================================================
+
+skills_invoked:
+  - analyze_prd_changes        # 0 PRU - Copilot diff analysis
+  - create_user_story          # 0 PRU - Copilot story generation
+  - estimate_complexity        # 0-8 PRU - Copilot + optional AI validation
+  - decompose_epic             # 0 PRU - Copilot epic breakdown
+  - maintain_timeline          # 0 PRU - Copilot timeline updates
+  - track_dependencies         # 0 PRU - Copilot dependency graph
+
+# ==============================================================================
+# EXECUTION MODEL
+# ==============================================================================
+
+prd_change_detection:
+  trigger:
+    - git diff on Updated_PRD.md, TECHNICAL_PRD.md, WORKFLOW_DESIGN.md
+    - manual: @technical-story analyze-changes
+  
+  workflow:
+    1. detect_changes:
+        tool: git diff
+        parse: [added_requirements, modified_requirements, removed_requirements]
+    
+    2. categorize_impact:
+        low: [clarifications, typos, formatting]
+        medium: [new_endpoints, schema_changes, validation_rules]
+        high: [state_machine_changes, architecture_changes, security_requirements]
+        critical: [breaking_changes, compliance_requirements]
+    
+    3. generate_stories:
+        for_each: changed_requirement
+        create: user_story + acceptance_criteria + tasks
+    
+    4. update_timelines:
+        recalculate: sprint_capacity
+        reorder: backlog_priority
+        flag: blocked_stories
+
+story_creation:
+  tool: github_copilot
+  cost: 0
+  
+  template: |
+    **Title:** [Action] + [Feature] + [Value]
+    
+    **As a** [user_type]
+    **I want** [functionality]
+    **So that** [business_value]
+    
+    **Acceptance Criteria:**
+    - [ ] Criterion 1
+    - [ ] Criterion 2
+    - [ ] Criterion 3
+    
+    **Technical Notes:**
+    - API: [endpoint changes]
+    - Schema: [data model changes]
+    - Tests: [test coverage requirements]
+    
+    **Dependencies:**
+    - Blocks: [story IDs]
+    - Blocked by: [story IDs]
+    
+    **Estimate:** [story points] SP
+    **Priority:** [P0/P1/P2/P3]
+  
+  context_loading:
+    - Updated_PRD.md (business requirements)
+    - TECHNICAL_PRD.md (implementation details)
+    - API-SPECIFICATION.yml (API contracts)
+    - WORKFLOW_DESIGN.md (state machines)
+    - existing_stories/ (pattern matching)
+
+story_maintenance:
+  operations:
+    create_new:
+      when: [new_requirement_added, epic_decomposed]
+      action: generate_story_from_template
+      
+    modify_existing:
+      when: [requirement_changed, acceptance_criteria_updated]
+      action: update_story_in_place
+      preserve: [story_id, history, comments]
+      
+    archive_obsolete:
+      when: [requirement_removed, feature_cancelled]
+      action: move_to_archive
+      tag: [obsolete, reason, date]
+    
+    link_dependencies:
+      when: [new_story_created, epic_updated]
+      action: update_dependency_graph
+      check: [circular_dependencies, blocked_chains]
+
+epic_management:
+  decompose_epic:
+    tool: github_copilot
+    cost: 0
+    
+    input: epic_description + acceptance_criteria
+    
+    workflow:
+      1. identify_features:
+          extract: distinct_features from epic
+      
+      2. create_stories:
+          for_each: feature
+          generate: [story, tasks, estimates]
+      
+      3. sequence_stories:
+          analyze: dependencies
+          order: [foundation_first, progressive_complexity]
+      
+      4. validate_completeness:
+          check: all_acceptance_criteria_covered
+          estimate: total_story_points <= epic_estimate * 1.2
+    
+    output:
+      stories: [list of story objects]
+      timeline: [sprint assignments]
+      dependencies: [dependency graph]
+
+estimation:
+  tool: github_copilot + optional AI validation
+  cost: 0-8  # 8 PRU if AI validation requested
+  
+  estimation_method: planning_poker_inspired
+  
+  story_points:
+    1: trivial (< 4 hours)
+    2: simple (< 1 day)
+    3: moderate (1-2 days)
+    5: complex (3-5 days)
+    8: very_complex (1-2 weeks)
+    13: epic (needs decomposition)
+  
+  factors:
+    - code_complexity
+    - testing_requirements
+    - integration_points
+    - risk_level
+    - team_familiarity
+  
+  ai_validation:
+    trigger: estimate >= 8 OR uncertainty_high
+    model: gpt-4o-mini
+    cost: 8
+    purpose: validate complexity assessment
+    output: [adjusted_estimate, confidence, risk_factors]
+
+timeline_management:
+  maintain_timeline:
+    tool: github_copilot
+    cost: 0
+    
+    inputs:
+      - team_capacity: [developers, qa, devops]
+      - sprint_duration: 2_weeks
+      - current_sprint: sprint_number
+      - velocity: average_story_points_per_sprint
+    
+    operations:
+      recalculate_sprint_allocation:
+        when: [new_stories_added, estimates_changed, team_capacity_changed]
+        algorithm: |
+          available_capacity = team_size * sprint_duration * daily_capacity
+          allocated_points = sum(story.points for story in sprint)
+          if allocated_points > available_capacity * 0.8:
+            flag_overcommitment()
+      
+      reorder_backlog:
+        when: [priorities_changed, dependencies_updated]
+        algorithm: |
+          sort_by: [priority DESC, dependencies ASC, risk DESC]
+          validate: no_blocked_stories_scheduled_before_blockers
+      
+      flag_at_risk:
+        when: [story_blocked, estimate_increased, dependency_delayed]
+        action: [notify_stakeholders, suggest_replanning]
+
+decision_tracking:
+  record_decisions:
+    format: architecture_decision_record
+    
+    template: |
+      ## ADR-[number]: [Decision Title]
+      
+      **Status:** [Proposed/Accepted/Deprecated/Superseded]
+      **Date:** YYYY-MM-DD
+      **Deciders:** [Names]
+      **Related Stories:** [Story IDs]
+      
+      ### Context
+      [What changed? Why decision needed?]
+      
+      ### Decision
+      [What was decided?]
+      
+      ### Consequences
+      **Positive:**
+      - [Benefit 1]
+      
+      **Negative:**
+      - [Trade-off 1]
+      
+      **Risks:**
+      - [Risk 1]
+      
+      ### Alternatives Considered
+      - [Option 1]: [Why rejected]
+    
+    storage: docs/decisions/
+    
+    link_to_stories:
+      when: decision_affects_implementation
+      action: add_decision_link_to_story_description
+
+# ==============================================================================
+# CLI INTEGRATION
+# ==============================================================================
+
+cli_tools:
+  analyze_prd_changes:
+    command: python cli/story_analyzer.py --prd Updated_PRD.md --output stories/
+    triggers: [git hook on PRD modification]
+    
+  create_story:
+    command: python cli/story_creator.py --epic EPIC-123 --output stories/new/
+    
+  estimate_story:
+    command: python cli/story_estimator.py --story STORY-456 --validate-ai
+    cost: 8  # if --validate-ai flag used
+  
+  update_timeline:
+    command: python cli/timeline_manager.py --sprint current --capacity 40
+  
+  check_dependencies:
+    command: python cli/dependency_checker.py --stories stories/*.yml
+
+# ==============================================================================
+# INVOCATION RULES
+# ==============================================================================
+
+execute_when:
+  prd_updated:
+    conditions:
+      - git diff shows changes to PRD files
+    actions:
+      - analyze_changes
+      - identify_impacted_stories
+      - create_new_stories_for_new_requirements
+      - update_existing_stories_for_modified_requirements
+      - archive_stories_for_removed_requirements
+  
+  epic_created:
+    conditions:
+      - new epic filed in backlog
+    actions:
+      - decompose_epic_into_stories
+      - estimate_each_story
+      - sequence_stories_by_dependency
+      - assign_to_sprints
+  
+  estimate_requested:
+    conditions:
+      - story needs sizing
+      - OR estimate uncertainty high
+    actions:
+      - calculate_story_points
+      - validate_with_ai_if_complex
+      - record_estimate_rationale
+  
+  timeline_drift:
+    conditions:
+      - sprint velocity changed
+      - OR story blocked
+      - OR new high_priority work
+    actions:
+      - recalculate_sprint_capacity
+      - reorder_backlog
+      - notify_stakeholders
+
+# ==============================================================================
+# OUTPUTS (STRUCTURED)
+# ==============================================================================
+
+outputs:
+  story_yaml:
+    format: YAML
+    schema:
+      id: str
+      title: str
+      description: str
+      acceptance_criteria: list[str]
+      technical_notes: dict
+      dependencies: dict
+      estimate: int
+      priority: str
+      sprint: int
+      status: str
+    
+  timeline_json:
+    format: JSON
+    schema:
+      sprints: list[dict]
+      capacity: int
+      allocated: int
+      at_risk: list[str]
+      blocked: list[str]
+  
+  decision_record:
+    format: Markdown
+    location: docs/decisions/ADR-{number}.md
+
+# ==============================================================================
+# INTEGRATION WITH GOVERNANCE
+# ==============================================================================
+
+governance_integration:
+  pru_tracking:
+    technical_story_agent: 0-8  # 0 Copilot, 8 AI validation
+    reports_to: pru_governance
+  
+  budget_compliance:
+    contributes: 0-8
+    respects: 100_pru_total_limit
+  
+  audit_trail:
+    logs:
+      - prd_changes_analyzed
+      - stories_created_count
+      - estimates_calculated
+      - timelines_updated
+      - decisions_recorded
+
+# ==============================================================================
+# USAGE EXAMPLES
+# ==============================================================================
+
+examples:
+  scenario_1_new_requirement:
+    trigger: "PRD updated: Add partial refund support"
+    
+    actions:
+      1. analyze_prd_changes:
+          detected: new_requirement in Updated_PRD.md section 4.2
+      
+      2. create_stories:
+          - STORY-101: "Add refund_percentage field to return schema"
+          - STORY-102: "Implement partial refund calculation in return_service"
+          - STORY-103: "Update API endpoint to accept partial refunds"
+          - STORY-104: "Add partial refund tests"
+      
+      3. estimate_stories:
+          STORY-101: 2 SP (simple schema change)
+          STORY-102: 3 SP (moderate logic)
+          STORY-103: 2 SP (API update)
+          STORY-104: 3 SP (comprehensive tests)
+      
+      4. update_timeline:
+          total: 10 SP
+          sprint: current + 1 (capacity available)
+          dependencies: 102 → 103 → 104 (sequential)
+    
+    output:
+      stories_created: 4
+      total_estimate: 10 SP
+      sprint_assigned: Sprint 5
+      pru_used: 0
+  
+  scenario_2_epic_decomposition:
+    input: "EPIC-10: Implement complete return workflow"
+    
+    actions:
+      1. decompose_epic:
+          features:
+            - Return request initiation
+            - Manager approval workflow
+            - Warehouse receiving
+            - Refund processing
+      
+      2. create_stories:
+          - STORY-201: Return request API (3 SP)
+          - STORY-202: Manager approval UI (5 SP)
+          - STORY-203: Warehouse scan integration (5 SP)
+          - STORY-204: Refund payment gateway (8 SP)
+          - STORY-205: Email notifications (2 SP)
+          - STORY-206: E2E tests (5 SP)
+      
+      3. sequence_stories:
+          sprint_1: [201, 202] (8 SP)
+          sprint_2: [203, 204] (13 SP)
+          sprint_3: [205, 206] (7 SP)
+      
+      4. validate_ai_estimates:
+          trigger: STORY-204 >= 8 SP
+          ai_validation: confirmed 8 SP (payment integration complex)
+          confidence: 0.85
+    
+    output:
+      stories_created: 6
+      total_estimate: 28 SP
+      sprints_required: 3
+      pru_used: 8  # AI validation for STORY-204
+
+# ==============================================================================
+# FALLBACK BEHAVIOR
+# ==============================================================================
+
+fallback:
+  on_copilot_unavailable:
+    action: use_story_templates_manual
+    notification: team_lead
+  
+  on_prd_ambiguity:
+    action: flag_for_clarification
+    notify: product_owner
+    block: story_creation_until_resolved
+  
+  on_timeline_overcommitment:
+    action: suggest_scope_reduction
+    alternatives: [reduce_stories, extend_timeline, add_capacity]
+
+version_info:
+  version: "3.0"
+  breaking_changes: false
+  new_in_v3: [cli_integration, ai_validation, decision_tracking]

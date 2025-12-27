@@ -1,0 +1,63 @@
+# Returns Workflow Implementation (Epic B, Story B1)
+#
+# This workflow enforces agent-driven, governance-first development for the returns workflow PR branch.
+#
+# Place in .github/workflows/returns_workflow.yml
+
+name: returns_workflow
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**"
+      - "!README.md"
+      - "!docs/**"
+
+jobs:
+  agent_orchestrator:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Run tests and coverage
+        run: |
+          pytest --cov=app --cov-report=xml
+      - name: Run static analysis
+        run: |
+          ruff check app/
+          mypy app/
+          bandit -r app/
+          safety check
+      - name: Check coverage threshold
+        run: |
+          coverage report --fail-under=85
+      - name: Request Copilot review
+        uses: github/copilot-review-action@v1
+        with:
+          pr_number: ${{ github.event.pull_request.number }}
+      - name: Require human review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              reviewers: ['team-lead', 'security-reviewer']
+            })
+      - name: Block merge if requirements not met
+        if: failure()
+        run: exit 1
+# Governance:
+# - PRs must pass all checks and have at least one human review
+# - Copilot review is required for logic/coverage/security
+# - AI governance escalation for state machine or payment logic (add as needed)
+# - Branch naming: story/b1-returns-workflow

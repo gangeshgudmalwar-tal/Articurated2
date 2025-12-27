@@ -1,0 +1,297 @@
+# Validation Agent - Static-First, AI-Triggered
+# Version: 3.0
+# Default Cost: 0 PRU (static tools only)
+# AI Escalation: 8 PRU (mini) when failure diagnosis needed
+
+metadata:
+  version: "3.0"
+  default_execution: static_tools
+  ai_model: gpt-4o-mini
+  ai_pru_cost: 8
+  ai_trigger: on_test_failure_or_security_finding
+  total_cost: 0-8  # Almost always 0
+
+# ==============================================================================
+# PRINCIPLE: STATIC ANALYSIS FIRST, AI ONLY FOR DIAGNOSIS
+# ==============================================================================
+
+# This agent invokes static_validation skills from skills_v3.yml
+skills_invoked:
+  - test_execution  # pytest - 0 PRU
+  - security_scan  # bandit - 0 PRU
+  - dependency_audit  # safety - 0 PRU
+  - code_quality  # ruff - 0 PRU
+  - type_checking  # mypy - 0 PRU
+  - diagnose_failure  # GPT-4o-mini - 8 PRU (conditional)
+
+execution_model:
+  default_pipeline:
+    - run_pytest  # 0 PRU
+    - run_bandit  # 0 PRU
+    - run_safety  # 0 PRU
+    - run_ruff    # 0 PRU
+    - run_mypy    # 0 PRU
+    - analyze_coverage  # 0 PRU
+  
+  ai_escalation:
+    trigger_conditions:
+      - tests_failed: true
+      - OR security_findings: severity >= MEDIUM
+      - OR coverage_dropped: > 5%
+    
+    when_triggered:
+      model: gpt-4o-mini
+      pru_cost: 8
+      purpose: diagnose_root_cause
+      output: structured_remediation
+
+# ==============================================================================
+# STATIC TOOL CONFIGURATION
+# ==============================================================================
+
+static_tools:
+  pytest:
+    command: pytest --cov=app --cov-report=json --junit-xml=report.xml
+    cost: 0
+    timeout: 5m
+    parallel: true
+    fail_fast: true
+    
+    outputs:
+      test_results: junit_xml
+      coverage_data: json
+      exit_code: integer
+    
+    success_criteria:
+      all_tests_pass: true
+      coverage >= 85: true
+  
+  bandit:
+    command: bandit -r app/ -f json -o bandit-report.json
+    cost: 0
+    timeout: 30s
+    
+    outputs:
+      findings: json
+      severity_counts: dict
+    
+    blocking_conditions:
+      severity: [HIGH, CRITICAL]
+  
+  safety:
+    command: safety check --json --output safety-report.json
+    cost: 0
+    timeout: 10s
+    
+    outputs:
+      vulnerabilities: json
+      cve_list: array
+    
+    blocking_conditions:
+      severity: [HIGH, CRITICAL]
+      exploitability: known
+  
+  ruff:
+    command: ruff check app/ --output-format=json
+    cost: 0
+    timeout: 5s
+    
+    outputs:
+      issues: json
+    
+    enforcement: advisory  # Don't block merge
+  
+  mypy:
+    command: mypy app/ --json-report mypy-report
+    cost: 0
+    timeout: 30s
+    
+    outputs:
+      type_errors: json
+    
+    enforcement: advisory
+
+# ==============================================================================
+# AI DIAGNOSIS RULES
+# ==============================================================================
+
+ai_diagnosis:
+  invocation_rules:
+    # ONLY invoke AI when:
+    required_conditions:
+      - static_tool_failed: true
+      - AND failure_not_obvious: true
+    
+    skip_conditions:
+      - all_tests_pass: true
+      - AND no_security_findings: true
+      - AND coverage_ok: true
+  
+  diagnosis_scope:
+    when_tests_fail:
+      analyze:
+        - failure_stack_traces
+        - recent_code_changes
+        - test_expectations
+      output: root_cause + fix_steps
+    
+    when_security_finding:
+      analyze:
+        - vulnerability_details
+        - affected_code
+        - exploit_scenario
+      output: risk_assessment + remediation
+    
+    when_coverage_drops:
+      analyze:
+        - uncovered_lines
+        - critical_paths
+        - test_gaps
+      output: test_recommendations
+  
+  output_structure:
+    issue_type: enum
+    root_cause: string  # max 200 chars
+    affected_files: array
+    remediation_steps: array  # actionable, ordered
+    confidence: float
+    estimated_fix_time: string
+
+# ==============================================================================
+# PARALLEL EXECUTION - ALL STATIC TOOLS RUN SIMULTANEOUSLY
+# ==============================================================================
+
+parallel_execution:
+  strategy: run_all_in_parallel
+  timeout: 5m
+  
+  execution_plan:
+    batch_1:  # Core validation (blocking)
+      - pytest
+      - bandit
+      - safety
+    
+    batch_2:  # Quality checks (advisory)
+      - ruff
+      - mypy
+  
+  failure_handling:
+    fail_fast: true  # Stop on first blocking failure
+    collect_all_results: true  # Even if one fails
+
+# ==============================================================================
+# BLOCKING CONDITIONS - HARD STOPS
+# ==============================================================================
+
+blocking_conditions:
+  must_block_merge:
+    - tests_failed: true
+    - OR security_high_critical: true
+    - OR coverage_below_threshold: true
+    - OR known_cve_exploitable: true
+  
+  advisory_only:
+    - linting_issues: true
+    - type_errors: minor
+    - style_violations: true
+
+# ==============================================================================
+# INCREMENTAL TESTING - COST OPTIMIZATION
+# ==============================================================================
+
+incremental_testing:
+  enabled: true
+  
+  strategies:
+    changed_files_only:
+      when: commit_size < 10_files
+      run: pytest --lf  # Last failed + changed
+      cost_savings: 70%
+    
+    full_suite:
+      when: commit_size >= 10_files OR state_machine_change
+      run: pytest --full
+      cost_savings: 0
+  
+  cache_policy:
+    cache_test_results: 24h
+    invalidate_on: [requirements_change, pytest_config_change]
+
+# ==============================================================================
+# REPORTING - STRUCTURED OUTPUT
+# ==============================================================================
+
+reporting:
+  output_format:
+    test_summary:
+      total: integer
+      passed: integer
+      failed: integer
+      skipped: integer
+      duration_seconds: float
+    
+    coverage:
+      percentage: float
+      threshold: 85
+      delta: float  # vs baseline
+    
+    security:
+      findings: array
+      severity_counts: dict
+      blocking: boolean
+    
+    quality:
+      linting_issues: integer
+      type_errors: integer
+    
+    ai_diagnosis:
+      triggered: boolean
+      pru_used: integer
+      recommendations: array
+  
+  notification:
+    on_failure: immediate
+    on_security_finding: immediate
+    on_success: summary_only
+
+# ==============================================================================
+# INTEGRATION WITH ORCHESTRATOR
+# ==============================================================================
+
+orchestrator_integration:
+  reports_to: orchestrator.pru_governance
+  
+  cost_reporting:
+    static_tools: 0
+    ai_diagnosis: 0-8
+    total: 0-8
+  
+  outputs:
+    validation_status: [PASS, FAIL, PARTIAL]
+    blocking_issues: array
+    pru_consumed: integer
+
+# ==============================================================================
+# FALLBACK & ERROR HANDLING
+# ==============================================================================
+
+fallback:
+  on_static_tool_crash:
+    action: run_alternate_tool
+    fallback_tools:
+      pytest: unittest
+      bandit: semgrep
+      safety: pip_audit
+  
+  on_timeout:
+    action: fail_safe_block
+    notification: immediate
+  
+  on_ai_unavailable:
+    action: block_merge_require_manual
+    reason: "cannot diagnose test failure"
+
+version_info:
+  version: "3.0"
+  replaces: validation.yml v1.0
+  breaking_changes: true
