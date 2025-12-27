@@ -39,10 +39,6 @@ jobs:
       - name: Check coverage threshold
         run: |
           coverage report --fail-under=85
-      - name: Request Copilot review
-        uses: github/copilot-review-action@v1
-        with:
-          pr_number: ${{ github.event.pull_request.number }}
       - name: Require human review
         uses: actions/github-script@v7
         with:
