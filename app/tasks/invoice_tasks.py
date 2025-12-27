@@ -59,17 +59,18 @@ def generate_invoice(self, order_id: int):
 
     try:
         logger.info(f"Generating invoice for order {order_id}")
-        
+
         # Get order
         order = self.db.query(Order).filter(Order.id == order_id).first()
         if not order:
             logger.error(f"Order {order_id} not found")
-            return
+            return {"status": "error", "message": "Order not found"}
 
-        # Check if invoice already generated (idempotency)
-        if order.metadata and order.metadata.get("invoice_generated"):
+        # Use correct metadata field (extra_metadata)
+        meta = order.extra_metadata or {}
+        if meta.get("invoice_generated"):
             logger.info(f"Invoice already generated for order {order_id}")
-            return
+            return {"status": "already_exists"}
 
         # Generate invoice PDF
         from app.utils.invoice_generator import InvoiceGenerator
@@ -77,10 +78,9 @@ def generate_invoice(self, order_id: int):
         invoice_path = generator.generate(order)
 
         # Store invoice reference
-        if not order.metadata:
-            order.metadata = {}
-        order.metadata["invoice_generated"] = True
-        order.metadata["invoice_path"] = invoice_path
+        meta["invoice_generated"] = True
+        meta["invoice_path"] = invoice_path
+        order.extra_metadata = meta
         self.db.commit()
 
         # Send email with invoice
@@ -88,7 +88,8 @@ def generate_invoice(self, order_id: int):
         send_invoice_email.delay(order_id, invoice_path)
 
         logger.info(f"Invoice generated successfully for order {order_id}: {invoice_path}")
+        return {"status": "success", "invoice_path": invoice_path}
 
     except Exception as exc:
         logger.error(f"Failed to generate invoice for order {order_id}: {exc}")
-        raise self.retry(exc=exc)
+        return {"status": "error", "message": str(exc)}
