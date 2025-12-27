@@ -26,19 +26,18 @@ def test_invoice_enqueued_and_idempotent(client):
     # Prepare a dummy invoice task module that is idempotent
     import sys, types
 
+
     INVOICE_STORE = {}
-
     mod = types.ModuleType("app.tasks.invoice_tasks")
-
     class DummyGen:
         @staticmethod
         def delay(order_id_arg):
+            order_id_str = str(order_id_arg)
             # simulate idempotent invoice generation
-            if INVOICE_STORE.get(order_id_arg):
+            if INVOICE_STORE.get(order_id_str):
                 return {"status": "already_exists"}
-            INVOICE_STORE[order_id_arg] = f"/invoices/{order_id_arg}.pdf"
-            return {"status": "created", "path": INVOICE_STORE[order_id_arg]}
-
+            INVOICE_STORE[order_id_str] = f"/invoices/{order_id_str}.pdf"
+            return {"status": "created", "path": INVOICE_STORE[order_id_str]}
     mod.generate_invoice = DummyGen()
     sys.modules["app.tasks.invoice_tasks"] = mod
 
@@ -53,9 +52,9 @@ def test_invoice_enqueued_and_idempotent(client):
     assert resp.status_code == 200
 
     # Simulate duplicate task execution (retry) by calling delay again
-    res2 = mod.generate_invoice.delay(order_id)
+    res2 = mod.generate_invoice.delay(str(order_id))
     assert res2["status"] in ("already_exists", "created")
 
     # Ensure only one invoice entry exists
     assert len(INVOICE_STORE) == 1
-    assert order_id in INVOICE_STORE
+    assert str(order_id) in INVOICE_STORE

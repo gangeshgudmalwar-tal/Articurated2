@@ -127,7 +127,7 @@ class OrderService:
         self,
         order_id: int,
         new_state: OrderStatus,
-        actor_id: str = None,
+        actor: str = None,
         trigger: str = "API",
         metadata: Optional[Dict[str, Any]] = None,
         notes: Optional[str] = None,
@@ -139,7 +139,7 @@ class OrderService:
         Args:
             order_id: Order ID
             new_state: Target state
-            actor_id: User ID or SYSTEM
+            actor: User ID or SYSTEM
             trigger: Source of transition
             metadata: Additional context
             notes: Transition notes
@@ -161,13 +161,13 @@ class OrderService:
         previous_state = order.status
         order.status = new_state
 
-        # Map actor_id to actor for audit
-        actor = actor_id if actor_id is not None else "SYSTEM"
+        # Use actor for audit
+        audit_actor = actor if actor is not None else "SYSTEM"
         self.audit_service.record_state_change(
             order_id=order_id,
             previous_state=previous_state,
             new_state=new_state,
-            actor=actor,
+            actor=audit_actor,
             trigger=trigger,
             ip_address=ip_address,
             metadata=metadata,
