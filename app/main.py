@@ -6,7 +6,8 @@ Main application entry point for FastAPI.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api.v1 import orders, returns, health
+from app.api.v1 import orders, returns, health, metrics
+from app.core import logging as app_logging
 
 # Create FastAPI application
 app = FastAPI(
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(orders.router, prefix=settings.API_V1_PREFIX, tags=["orders"])
 app.include_router(returns.router, prefix=settings.API_V1_PREFIX, tags=["returns"])
 app.include_router(health.router, prefix=settings.API_V1_PREFIX, tags=["health"])
+app.include_router(metrics.router, prefix=settings.API_V1_PREFIX, tags=["metrics"])
 
 
 @app.get("/")
@@ -42,6 +44,11 @@ async def root() -> dict[str, str]:
         "health": f"{settings.API_V1_PREFIX}/health",
     }
 
+
+# Optionally, add a startup event to log service start
+@app.on_event("startup")
+def log_startup():
+    app_logging.logger.info("ArtiCurated API service started.")
 
 if __name__ == "__main__":
     import uvicorn

@@ -7,8 +7,9 @@ from app.database import get_db
 from app.schemas.common import HealthResponse
 import redis
 from app.config import settings
+from app.core.security import get_api_key
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 
 @router.get("/health", response_model=HealthResponse)

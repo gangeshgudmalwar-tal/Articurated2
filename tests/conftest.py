@@ -45,7 +45,7 @@ def db_session():
 
 @pytest.fixture(scope="function")
 def client(db_session):
-    """Create a test client with database dependency override."""
+    """Create a test client with database dependency override and API key header."""
     def override_get_db():
         try:
             yield db_session
@@ -53,7 +53,14 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    class APIKeyTestClient(TestClient):
+        def request(self, method, url, **kwargs):
+            headers = kwargs.pop("headers", {}) or {}
+            headers["X-API-Key"] = "dev-api-key"
+            kwargs["headers"] = headers
+            return super().request(method, url, **kwargs)
+
+    with APIKeyTestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

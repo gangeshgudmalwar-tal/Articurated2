@@ -18,8 +18,9 @@ from app.schemas.state_history import StateHistoryResponse
 from app.services.return_service import ReturnService
 from app.services.state_machine import ReturnStatus
 from app.utils.exceptions import ResourceNotFoundError, InvalidStateTransitionError, ValidationError
+from app.core.security import get_api_key
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 
 @router.post("/returns", response_model=ReturnResponse, status_code=201)
