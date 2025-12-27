@@ -47,3 +47,10 @@ class HealthResponse(BaseModel):
     version: str = Field(..., description="API version")
     database: str = Field(..., description="Database connection status")
     redis: str = Field(..., description="Redis connection status")
+
+
+class MetricsResponse(BaseModel):
+    """System metrics response."""
+    orders: dict = Field(..., description="Order metrics: total and by status")
+    returns: dict = Field(..., description="Return metrics: total and by status")
+    performance: dict = Field(..., description="Performance metrics (placeholders)")

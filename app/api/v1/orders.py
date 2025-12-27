@@ -17,8 +17,9 @@ from app.schemas.state_history import StateHistoryResponse
 from app.services.order_service import OrderService
 from app.services.state_machine import OrderStatus
 from app.utils.exceptions import ResourceNotFoundError, InvalidStateTransitionError
+from app.core.security import get_api_key
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 
 @router.post("/orders", response_model=OrderResponse, status_code=201)
